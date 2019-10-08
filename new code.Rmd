@@ -1,0 +1,176 @@
+---
+title: "final"
+author: "Di"
+date: "8/16/2019"
+output: html_document
+---
+
+#load the data
+```{r}
+setwd("C:/Users/Di/Desktop/JOB/time series")
+wt <- read.table("wt.txt", header = T)
+```
+
+#change the data type to time series
+```{r}
+wt <- ts(wt, start=c(1966,1), end=c(1988,12), frequency=12)#276 data
+```
+
+#view the first 5 lines
+```{r}
+window(wt, start=1966, end=c(1966+5, 12), frequency=12)#264 data
+```
+
+#check the missing value
+```{r}
+sum(is.na(wt))
+```
+
+#plot
+```{r}
+plot(wt, xlab = "time(year)", ylab = "water usage(ml/day)")
+```
+
+```{r}
+logwt <- log(wt)
+plot(logwt, xlab = "time(year)", ylab = "log water usage(ml/day)")
+```
+
+#
+```{r}
+plot(decompose(logwt, type = "add")$seasonal,xlab = "time(year)",ylab = "log water usage(ml/day)")
+boxplot(logwt ~ cycle(logwt), ylab = "log water usage(ml/day)", xlab = "time(month)")
+```
+
+#trend model
+```{r}
+TIME <- time(logwt)
+time <- (TIME - mean(TIME))/sd(TIME)
+fit.linear <- lm(logwt ~ time)
+fit.quadratic <- lm(logwt ~ time + I(time^2))
+fit.cubic <- lm(logwt ~ time + I(time^2) + I(time^3))
+
+AIC(fit.linear, fit.quadratic, fit.cubic)
+```
+
+```{r}
+summary(fit.cubic)
+```
+
+#seasonal effect
+```{r}
+#factor seasonal
+seas <- cycle(logwt)
+fit.seas <- lm(logwt ~ 0 + time + I(time^2) + I(time^3) + factor(seas))
+fit.seas
+```
+
+#ARMA
+#stationary
+```{r}
+library(tseries)
+adf.test(resid(fit.seas))
+```
+
+#ACF PACF
+```{r}
+acf(resid(fit.seas), main = "")
+pacf(resid(fit.seas), ylim = c(-0.1, 1), main = "")
+```
+
+#best ARMA
+```{r}
+best.order <- c(0, 0, 0)
+best.aic <- Inf  # initialize best AIC at infinity so that the first model will beat it
+for (i in 0:1)  # loop through possible p parameters for AR part
+{
+  for (j in 0:2) # loop through possible q parameters for MA part
+  {
+    fit.aic <- AIC(arima(resid(fit.seas), order = c(i,0,j)))  # get AIC for ARMA(i,j) model
+    if (fit.aic < best.aic) # If this model is better than the best so far, keep it!
+    {
+      best.order <- c(i, 0, j)
+      best.arma <- arima(resid(fit.seas), order = best.order)
+      best.aic <- fit.aic
+    }
+  }
+}
+best.order
+best.arma
+best.aic
+```
+
+#wt
+```{r}
+mean(resid(best.arma))
+sd(resid(best.arma))^2
+```
+
+
+```{r}
+acf(resid(best.arma), ylim = c(-.1,1), main = "")
+pacf(resid(best.arma), ylim = c(-.1,1), main = "")
+```
+
+#in-sample
+```{r}
+new.data <- data.frame(time=time, seas=rep(1:12, 23))
+
+predict.lm <- predict(fit.seas, new.data)  # predicts regression function
+
+predict.arma <- predict(best.arma, n.ahead = 12*23) # predicts errors
+
+wt.arma <- ts(predict.lm + predict.arma$pred, start = c(1966,1),freq = 12) # put predictions together
+
+ts.plot(cbind(wt, exp(wt.arma)), lty = 1:2, col=c("black","purple"), 
+        ylim=c(70,250), xlab = "time(year)", ylab = "water usage(ml/day)")  
+legend("bottomright", c("monthly water usage", "final model"), col = c("black", "purple"),
+          lty = c(1:2))
+```
+
+#future
+```{r}
+new.time <- seq(1989, len = 12*5, by = 1/12)
+new.time <- (new.time - mean(TIME))/sd(TIME)
+new.data <- data.frame(time=new.time, seas=rep(1:12, 5))
+
+predict.lm <- predict(fit.seas, new.data)  # predicts regression function
+
+predict.arma <- predict(best.arma, n.ahead = 12*5) # predicts errors
+
+wt.arma <- ts(predict.lm + predict.arma$pred, start = c(1989,1),freq = 12) # put predictions together
+
+ts.plot(cbind(wt, exp(wt.arma)), lty = 1:2, col=c("black","purple"), 
+        ylim=c(70,250), xlab = "time(year)", ylab = "water usage(ml/day)")  
+legend("bottomright", c("monthly water usage", "future predition"), col = c("black", "purple"),
+          lty = c(1:2))
+```
+
+
+############ DIDN'T use ###############
+#remove outliers
+```{r}
+library(forecast)
+wtnew <- wt
+wtnew[tsoutliers(wt)$index] <- tsoutliers(wt)$replacements
+```
+
+```{r}
+plot(wtnew)
+plot(wt)
+plot(decompose(wt))
+plot(decompose(wtnew))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
